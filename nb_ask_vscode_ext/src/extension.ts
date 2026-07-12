@@ -7,20 +7,23 @@ let server: Server | undefined;
 let _default_port: number = 3000;
 let port: number = _default_port;
 
+function getCellsContent(){
+	const nb = vscode.window.activeNotebookEditor?.notebook;
+	const cells = nb?.getCells().map((cell, index) => ({
+		index,
+		kind: cell.kind === vscode.NotebookCellKind.Code ? 'code' : 'markdown',
+		source: cell.document.getText(),
+		outputs: cell.outputs.map(o => o.items.map(i => Buffer.from(i.data).toString()).join(''))
+	}));
+	return cells;
+}
 
-function start_server(port: number) {
+function startServer(port: number) {
 	if (server === undefined) {
 		const app: Express = express();
 
 		app.get("/", (req: Request, res: Response) => {
-			const nb = vscode.window.activeNotebookEditor?.notebook;
-			const cells = nb?.getCells().map((cell, index) => ({
-				index,
-				kind: cell.kind === vscode.NotebookCellKind.Code ? 'code' : 'markdown',
-				source: cell.document.getText(),
-				outputs: cell.outputs.map(o => o.items.map(i => Buffer.from(i.data).toString()).join(''))
-			}));
-			res.json(cells);
+			res.json(getCellsContent());
 		});
 
 		server = app.listen(port, () => {
@@ -32,14 +35,22 @@ function start_server(port: number) {
 	};
 }
 
-function stop_server() {
+function stopServer() {
 	if (server === undefined) {
 		console.log("No NBAsk server running...");
 	}
 	else {
 		console.log("Closing NBAsk server...");
-		server?.close();
+		server.close();
 		server = undefined;
+	};
+}
+
+function maybeRestartServer(port: number){
+	if (server !== undefined) {
+		console.log(`Restart NBAsk server with new port: ${port}`);
+		stopServer();
+		startServer(port);
 	};
 }
 
@@ -55,29 +66,34 @@ export function activate(context: vscode.ExtensionContext) {
 		})
 	);
 	*/
-	console.log("Avctivationg nb_ask extension");
+	console.log("Activating nb_ask extension...");
 
 	context.subscriptions.push(
 		vscode.commands.registerCommand('nb_ask.set_port', async () => {
-			port = parseInt((await vscode.window.showInputBox({ prompt: 'Enter port:' })) ?? '3001', 10);
-			stop_server();
-			start_server(port);
+			let _port = (await vscode.window.showInputBox({ prompt: 'Enter port:' })) ?? '3001';
+			let parsedPort = parseInt(_port, 10);
+			if (isNaN(parsedPort)) {
+				vscode.window.showErrorMessage(`Invalid port number: ${_port}`, {modal: true});
+				return;
+			}
+			port = parsedPort;
+			maybeRestartServer(port);
 		})
 	);
 
 	context.subscriptions.push(
 		vscode.commands.registerCommand('nb_ask.start', async () => {
-			start_server(port);
+			startServer(port);
 		})
 	);
 	context.subscriptions.push(
 		vscode.commands.registerCommand('nb_ask.stop', async () => {
-			stop_server();
+			stopServer();
 		})
 	);
 
 }
 
 export function deactivate() { 
-	stop_server();
+	stopServer();
 }
