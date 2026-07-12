@@ -1,52 +1,52 @@
 {
-  "name": "helloworld",
-  "displayName": "HelloWorld",
-  "description": "",
-  "version": "0.0.1",
-  "engines": {
-    "vscode": "^1.125.0"
-  },
-  "categories": [
-    "Other"
-  ],
-  "activationEvents": [],
-  "main": "./out/extension.js",
-  "contributes": {
-    "commands": [
-      {
-        "command": "helloworld.helloWorld",
-        "title": "Hello World: Run"
-      },
-      {
-        "command": "helloworld.setToken",
-        "title": "Hello World: Set Token"
-      },
-      {
-        "command": "helloworld.count",
-        "title": "Hello World: Count Cells"
-      }
-    ]
-  },
-  "scripts": {
-    "vscode:prepublish": "npm run compile",
-    "compile": "tsc -p ./",
-    "watch": "tsc -watch -p ./",
-    "pretest": "npm run compile && npm run lint",
-    "lint": "eslint src",
-    "test": "vscode-test"
-  },
-  "devDependencies": {
-    "@types/vscode": "^1.125.0",
-    "@types/mocha": "^10.0.10",
-    "@types/node": "24.x",
-    "typescript-eslint": "^8.61.1",
-    "eslint": "^10.5.0",
-    "typescript": "^6.0.3",
-    "@vscode/test-cli": "^0.0.15",
-    "@vscode/test-electron": "^3.0.0"
-  },
-  "overrides": {
-    "diff": "^8.0.4",
-    "serialize-javascript": "^7.0.6"
-  }
+    "name": "nb_ask",
+    "displayName": "Notebook Ask",
+    "description": "",
+    "version": "0.0.1",
+    "engines": {
+        "vscode": "^1.125.0"
+    },
+    "categories": [
+        "Other"
+    ],
+    "activationEvents": [],
+    "main": "./out/extension.js",
+    "contributes": {
+        "commands": [
+            {
+                "command": "nb_ask.start",
+                "title": "NbAsk: Start Server"
+            },
+            {
+                "command": "nb_ask.stop",
+                "title": "NbAsk: Stop Server"
+            },
+            {
+                "command": "nb_ask.set_port",
+                "title": "NbAsk: Set server port (default: 3000)"
+            }
+        ]
+    },
+    "scripts": {
+        "vscode:prepublish": "npm run compile",
+        "compile": "tsc -p ./",
+        "watch": "tsc -watch -p ./",
+        "pretest": "npm run compile && npm run lint",
+        "lint": "eslint src",
+        "test": "vscode-test"
+    },
+    "devDependencies": {
+        "@types/vscode": "^1.125.0",
+        "@types/mocha": "^10.0.10",
+        "@types/node": "24.x",
+        "typescript-eslint": "^8.61.1",
+        "eslint": "^10.5.0",
+        "typescript": "^6.0.3",
+        "@vscode/test-cli": "^0.0.15",
+        "@vscode/test-electron": "^3.0.0"
+    },
+    "overrides": {
+        "diff": "^8.0.4",
+        "serialize-javascript": "^7.0.6"
+    }
 }
