@@ -1,4 +1,4 @@
-const target = await vscode.window.showQuickPick(
+/*const target = await vscode.window.showQuickPick(
     [
         {
             label: "Set token for A",
@@ -27,4 +27,4 @@ const token = await vscode.window.showInputBox({
 
 if (token) {
     await context.secrets.store(`nb_ask.token.${target.key}`, token);
-}
+}*/

@@ -7,14 +7,18 @@ let server: Server | undefined;
 let _default_port: number = 3000;
 let port: number = _default_port;
 
-function getCellsContent(){
-	const nb = vscode.window.activeNotebookEditor?.notebook;
-	const cells = nb?.getCells().map((cell, index) => ({
-		index,
-		kind: cell.kind === vscode.NotebookCellKind.Code ? 'code' : 'markdown',
-		source: cell.document.getText(),
-		outputs: cell.outputs.map(o => o.items.map(i => Buffer.from(i.data).toString()).join(''))
-	}));
+function getCellsContent() {
+	const editor = vscode.window.activeNotebookEditor;
+	const nb = editor?.notebook;
+	const activeCellIndex = editor?.selection.start ?? 0;
+	const cells = nb?.getCells()
+		.slice(0, activeCellIndex)
+		.map((cell, index) => ({
+			index,
+			kind: cell.kind === vscode.NotebookCellKind.Code ? 'code' : 'markdown',
+			source: cell.document.getText(),
+			outputs: cell.outputs.map(o => o.items.map(i => Buffer.from(i.data).toString()).join(''))
+		}));
 	return cells;
 }
 
@@ -46,7 +50,7 @@ function stopServer() {
 	};
 }
 
-function maybeRestartServer(port: number){
+function maybeRestartServer(port: number) {
 	if (server !== undefined) {
 		console.log(`Restart NBAsk server with new port: ${port}`);
 		stopServer();
@@ -73,7 +77,7 @@ export function activate(context: vscode.ExtensionContext) {
 			let _port = (await vscode.window.showInputBox({ prompt: 'Enter port:' })) ?? '3001';
 			let parsedPort = parseInt(_port, 10);
 			if (isNaN(parsedPort)) {
-				vscode.window.showErrorMessage(`Invalid port number: ${_port}`, {modal: true});
+				vscode.window.showErrorMessage(`Invalid port number: ${_port}`, { modal: true });
 				return;
 			}
 			port = parsedPort;
@@ -94,6 +98,6 @@ export function activate(context: vscode.ExtensionContext) {
 
 }
 
-export function deactivate() { 
+export function deactivate() {
 	stopServer();
 }
