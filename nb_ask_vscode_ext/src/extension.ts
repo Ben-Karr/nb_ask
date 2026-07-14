@@ -1,10 +1,10 @@
 import * as vscode from 'vscode';
-import express, { type Express, type Request, type Response } from 'express';
+import express, { NextFunction, type Express, type Request, type Response } from 'express';
 import { Server } from 'http';
 
 
 let server: Server | undefined;
-let _default_port: number = 3000;
+let _default_port: number = 3144;
 let port: number = _default_port;
 
 function getCellsContent() {
@@ -27,10 +27,11 @@ function startServer(port: number) {
 		const app: Express = express();
 
 		app.get("/", (req: Request, res: Response) => {
+			console.log("on route index");
 			res.json(getCellsContent());
 		});
 
-		server = app.listen(port, () => {
+		server = app.listen(port, "127.0.0.1", () => {
 			console.log(`NBAsk services provided on port: ${port}`);
 		});
 	}
