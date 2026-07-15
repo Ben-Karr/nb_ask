@@ -6,11 +6,18 @@ import os
 from dotenv import load_dotenv
 from IPython.display import display, Markdown
 
+EXT_URL = "http://localhost"
+EXT_PORT = "3144"
+
 
 def get_cells():
-    ret = httpx.get("http://localhost:3144/")
+    ret = httpx.get(f"{EXT_URL}:{EXT_PORT}")
     cell_content = ret.json()
     return cell_content
+
+
+def insert_cell(content):
+    httpx.post(f"{EXT_URL}:{EXT_PORT}", json={"content": content})
 
 
 load_dotenv()
@@ -33,3 +40,4 @@ def ask(pr: str):
     chat.last_response = resp
 
     display(Markdown(resp.choices[0].message.content))
+    insert_cell(resp.choices[0].message.content)

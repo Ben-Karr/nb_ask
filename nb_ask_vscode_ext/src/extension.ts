@@ -22,6 +22,29 @@ function getCellsContent() {
 	return cells;
 }
 
+async function insertResponse(content: any) {
+	const editor = vscode.window.activeNotebookEditor;
+	if (!editor) {
+		return 400;
+	}
+	const nb = editor.notebook;
+	const activeCellIndex = editor?.selection.start ?? 0;
+
+	const kind = vscode.NotebookCellKind.Markup;
+	const edit = new vscode.WorkspaceEdit();
+	const cellData = new vscode.NotebookCellData(
+		kind,
+		content,
+		"markdown",
+	);
+	edit.set(nb?.uri, [
+		vscode.NotebookEdit.insertCells(activeCellIndex + 1, [cellData])
+	]);
+
+	const success = await vscode.workspace.applyEdit(edit);
+	return success ? 200 : 500;
+}
+
 function startServer(port: number) {
 	if (server === undefined) {
 		const app: Express = express();
@@ -30,6 +53,14 @@ function startServer(port: number) {
 			console.log("on route index");
 			res.json(getCellsContent());
 		});
+
+		app.use(express.json());
+
+		app.post("/insert_response", async (req: Request, res: Response) => {
+			const content = req.body.content;
+			const status = await insertResponse(content);
+			res.status(status).send();
+		})
 
 		server = app.listen(port, "127.0.0.1", () => {
 			console.log(`NBAsk services provided on port: ${port}`);
