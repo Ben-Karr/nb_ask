@@ -15,10 +15,10 @@ def get_cells():
     return data["activeCellIndex"], data["cells"]
 
 
-def insert_cell(content):
+def insert_cell(content, target_cell_hash):
     return httpx.post(
         f"{EXT_URL}:{EXT_PORT}/insert_response",
-        json={"content": content},
+        json={"content": content, "targetCellHash": target_cell_hash},
     )
 
 

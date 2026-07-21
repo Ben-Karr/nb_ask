@@ -1,34 +1,66 @@
 import * as vscode from 'vscode';
 import express, { NextFunction, type Express, type Request, type Response } from 'express';
 import { Server } from 'http';
+import { createHash } from 'crypto';
 
 
 let server: Server | undefined;
 let _default_port: number = 3144;
 let port: number = _default_port;
 
+interface CellContent {
+	index: number;
+	kind: 'code' | 'markdown';
+	source: string;
+	outputs: string[];
+}
+
+function updateCellMetadata(
+	precedingCells: CellContent[],
+	activeCellIndex: number,
+	nb: vscode.NotebookDocument) {
+	if (nb.cellCount === 0) {
+		return { activeCellId: '', precedingCellsHash: '' };
+	};
+	const precedingCellsHash = createHash('sha256').update(JSON.stringify(precedingCells)).digest("hex");
+	const activeCell = nb.cellAt(activeCellIndex);
+	const existingId = activeCell.metadata.uuid;
+	const newMetadata = { ...activeCell.metadata, precedingCellsHash, uuid: existingId ?? crypto.randomUUID() };
+
+	const edit = new vscode.WorkspaceEdit();
+	edit.set(nb.uri, [vscode.NotebookEdit.updateCellMetadata(activeCellIndex, newMetadata)]);
+	vscode.workspace.applyEdit(edit);
+	return { activeCellId: newMetadata.uuid, precedingCellsHash };
+}
+
 function getCellsContent() {
 	const editor = vscode.window.activeNotebookEditor;
-	const nb = editor?.notebook;
+	if (!editor) {
+		return;
+	};
+	const nb = editor.notebook;
 	const activeCellIndex = editor?.selection.start ?? 0;
-	const cells = nb?.getCells()
+	const precedingCells = nb.getCells()
 		.slice(0, activeCellIndex)
-		.map((cell, index) => ({
+		.map((cell, index): CellContent => ({
 			index,
 			kind: cell.kind === vscode.NotebookCellKind.Code ? 'code' : 'markdown',
 			source: cell.document.getText(),
 			outputs: cell.outputs.map(o => o.items.map(i => Buffer.from(i.data).toString()).join(''))
 		}));
-	return cells;
+	const { activeCellId, precedingCellsHash } = updateCellMetadata(precedingCells, activeCellIndex, nb);
+
+	return { precedingCellsHash, precedingCells, activeCellId };
 }
 
-async function insertResponse(content: any) {
+async function insertResponse(content: any, targetCellId: string) {
 	const editor = vscode.window.activeNotebookEditor;
 	if (!editor) {
 		return 400;
 	}
 	const nb = editor.notebook;
-	const activeCellIndex = editor?.selection.start ?? 0;
+	//const activeCellIndex = editor?.selection.start ?? 0;
+	const targetCellIndex = nb.getCells().findIndex(c => c.metadata.uuid === targetCellId);
 
 	const kind = vscode.NotebookCellKind.Markup;
 	const edit = new vscode.WorkspaceEdit();
@@ -37,8 +69,9 @@ async function insertResponse(content: any) {
 		content,
 		"markdown",
 	);
+	cellData.metadata = { requestId: targetCellId, uuid: crypto.randomUUID() };
 	edit.set(nb?.uri, [
-		vscode.NotebookEdit.insertCells(activeCellIndex + 1, [cellData])
+		vscode.NotebookEdit.insertCells(targetCellIndex + 1, [cellData])
 	]);
 
 	const success = await vscode.workspace.applyEdit(edit);
@@ -50,15 +83,14 @@ function startServer(port: number) {
 		const app: Express = express();
 
 		app.get("/", (req: Request, res: Response) => {
-			console.log("on route index");
 			res.json(getCellsContent());
 		});
 
 		app.use(express.json());
 
 		app.post("/insert_response", async (req: Request, res: Response) => {
-			const content = req.body.content;
-			const status = await insertResponse(content);
+			const { content, targetCellHash } = req.body;
+			const status = await insertResponse(content, targetCellHash);
 			res.status(status).send();
 		})
 
@@ -89,7 +121,6 @@ function maybeRestartServer(port: number) {
 		startServer(port);
 	};
 }
-
 
 export function activate(context: vscode.ExtensionContext) {
 	// Keep that as comment, maybe want to add this back in later...
@@ -127,6 +158,13 @@ export function activate(context: vscode.ExtensionContext) {
 			stopServer();
 		})
 	);
+
+	vscode.workspace.onDidChangeNotebookDocument(e => {
+		for (const change of e.contentChanges) {
+			//change.removedCells
+			// loop through removedCells
+		}
+	});
 
 }
 
