@@ -8,6 +8,8 @@ let server: Server | undefined;
 let _default_port: number = 3144;
 let port: number = _default_port;
 
+
+let pendingMoves: { movedCellId: string; linkedCellId: string; linkedCellData: vscode.NotebookCellData; type: string }[] = [];
 interface CellContent {
 	index: number;
 	kind: 'code' | 'markdown';
@@ -15,7 +17,7 @@ interface CellContent {
 	outputs: string[];
 }
 
-function updateCellMetadata(
+async function updateCellMetadata(
 	precedingCells: CellContent[],
 	activeCellIndex: number,
 	nb: vscode.NotebookDocument) {
@@ -29,11 +31,11 @@ function updateCellMetadata(
 
 	const edit = new vscode.WorkspaceEdit();
 	edit.set(nb.uri, [vscode.NotebookEdit.updateCellMetadata(activeCellIndex, newMetadata)]);
-	vscode.workspace.applyEdit(edit);
+	await vscode.workspace.applyEdit(edit);
 	return { activeCellId: newMetadata.uuid, precedingCellsHash };
 }
 
-function getCellsContent() {
+async function getCellsContent() {
 	const editor = vscode.window.activeNotebookEditor;
 	if (!editor) {
 		return;
@@ -48,7 +50,7 @@ function getCellsContent() {
 			source: cell.document.getText(),
 			outputs: cell.outputs.map(o => o.items.map(i => Buffer.from(i.data).toString()).join(''))
 		}));
-	const { activeCellId, precedingCellsHash } = updateCellMetadata(precedingCells, activeCellIndex, nb);
+	const { activeCellId, precedingCellsHash } = await updateCellMetadata(precedingCells, activeCellIndex, nb);
 
 	return { precedingCellsHash, precedingCells, activeCellId };
 }
@@ -59,7 +61,6 @@ async function insertResponse(content: any, targetCellId: string) {
 		return 400;
 	}
 	const nb = editor.notebook;
-	//const activeCellIndex = editor?.selection.start ?? 0;
 	const targetCellIndex = nb.getCells().findIndex(c => c.metadata.uuid === targetCellId);
 
 	const kind = vscode.NotebookCellKind.Markup;
@@ -69,9 +70,11 @@ async function insertResponse(content: any, targetCellId: string) {
 		content,
 		"markdown",
 	);
-	cellData.metadata = { requestId: targetCellId, uuid: crypto.randomUUID() };
+	const responseId = crypto.randomUUID();
+	cellData.metadata = { requestId: targetCellId, uuid: responseId };
 	edit.set(nb?.uri, [
-		vscode.NotebookEdit.insertCells(targetCellIndex + 1, [cellData])
+		vscode.NotebookEdit.insertCells(targetCellIndex + 1, [cellData]),
+		vscode.NotebookEdit.updateCellMetadata(targetCellIndex, { ...nb.cellAt(targetCellIndex).metadata, responseId })
 	]);
 
 	const success = await vscode.workspace.applyEdit(edit);
@@ -82,8 +85,8 @@ function startServer(port: number) {
 	if (server === undefined) {
 		const app: Express = express();
 
-		app.get("/", (req: Request, res: Response) => {
-			res.json(getCellsContent());
+		app.get("/", async (req: Request, res: Response) => {
+			res.json(await getCellsContent());
 		});
 
 		app.use(express.json());
@@ -92,7 +95,7 @@ function startServer(port: number) {
 			const { content, targetCellHash } = req.body;
 			const status = await insertResponse(content, targetCellHash);
 			res.status(status).send();
-		})
+		});
 
 		server = app.listen(port, "127.0.0.1", () => {
 			console.log(`NBAsk services provided on port: ${port}`);
@@ -134,7 +137,6 @@ export function activate(context: vscode.ExtensionContext) {
 	);
 	*/
 	console.log("Activating nb_ask extension...");
-
 	context.subscriptions.push(
 		vscode.commands.registerCommand('nb_ask.set_port', async () => {
 			let _port = (await vscode.window.showInputBox({ prompt: 'Enter port:' })) ?? '3001';
@@ -147,7 +149,6 @@ export function activate(context: vscode.ExtensionContext) {
 			maybeRestartServer(port);
 		})
 	);
-
 	context.subscriptions.push(
 		vscode.commands.registerCommand('nb_ask.start', async () => {
 			startServer(port);
@@ -160,12 +161,62 @@ export function activate(context: vscode.ExtensionContext) {
 	);
 
 	vscode.workspace.onDidChangeNotebookDocument(e => {
+		const editor = vscode.window.activeNotebookEditor;
+		if (!editor) {
+			return;
+		};
+		const nb = editor.notebook;
+		const edit = new vscode.WorkspaceEdit();
 		for (const change of e.contentChanges) {
-			//change.removedCells
-			// loop through removedCells
+			for (const removedCell of change.removedCells) {
+				maybeStoreLinkedCell(removedCell, nb);
+			}
+
+			for (const addedCell of change.addedCells) {
+				maybeMoveLinkedCell(addedCell, nb, edit);
+			}
 		}
 	});
 
+}
+
+async function maybeMoveLinkedCell(addedCell: vscode.NotebookCell, nb: vscode.NotebookDocument, edit: vscode.WorkspaceEdit) {
+	const pendingMove = pendingMoves.find(m => m.movedCellId === addedCell.metadata.uuid);
+	if (pendingMove) {
+		const linkedCellIdx = nb.getCells().findIndex(c => c.metadata.uuid === pendingMove.linkedCellId);
+		const insertIdx = pendingMove.type === "request" ? addedCell.index + 1 : addedCell.index - 1;
+		edit.set(nb.uri, [
+			vscode.NotebookEdit.deleteCells(new vscode.NotebookRange(linkedCellIdx, linkedCellIdx + 1)),
+			vscode.NotebookEdit.insertCells(insertIdx, [pendingMove.linkedCellData])
+		]);
+		await vscode.workspace.applyEdit(edit);
+		pendingMoves = pendingMoves.filter(m => m.movedCellId !== addedCell.metadata.uuid);
+	}
+}
+
+function maybeStoreLinkedCell(removedCell: vscode.NotebookCell, nb: vscode.NotebookDocument) {
+	if (pendingMoves.some(m => m.linkedCellId === removedCell.metadata.uuid)) { return; }
+	let type: string;
+	let linkedCellId: string;
+	if ('requestId' in removedCell.metadata) {
+		type = 'response';
+		linkedCellId = removedCell.metadata.requestId;
+	}
+	else if ('responseId' in removedCell.metadata) {
+		type = 'request';
+		linkedCellId = removedCell.metadata.responseId;
+	}
+	else { return; };
+	const linkedCellIdx = nb.getCells().findIndex(c => c.metadata.uuid === linkedCellId);
+	const linkedCell = nb.cellAt(linkedCellIdx);
+	const linkedCellData = new vscode.NotebookCellData(
+		linkedCell.kind,
+		linkedCell.document.getText(),
+		linkedCell.document.languageId,
+	);
+	linkedCellData.metadata = linkedCell.metadata;
+
+	pendingMoves.push({ movedCellId: removedCell.metadata.uuid, linkedCellId, linkedCellData, type });
 }
 
 export function deactivate() {

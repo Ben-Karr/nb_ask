@@ -2,7 +2,7 @@
     "name": "nbAsk",
     "displayName": "Notebook Ask",
     "description": "",
-    "version": "0.0.4",
+    "version": "0.0.5",
     "engines": {
         "vscode": "^1.125.0"
     },

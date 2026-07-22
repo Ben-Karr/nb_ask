@@ -12,13 +12,13 @@ EXT_PORT = "3144"
 def get_cells():
     ret = httpx.get(f"{EXT_URL}:{EXT_PORT}")
     data = ret.json()
-    return data["activeCellIndex"], data["cells"]
+    return data["precedingCellsHash"], data["precedingCells"], data["activeCellId"]
 
 
-def insert_cell(content, target_cell_hash):
+def insert_cell(content, target_cell_id):
     return httpx.post(
         f"{EXT_URL}:{EXT_PORT}/insert_response",
-        json={"content": content, "targetCellHash": target_cell_hash},
+        json={"content": content, "targetCellId": target_cell_id},
     )
 
 
@@ -40,7 +40,7 @@ chat = Chat(model=model, api_base=endpoint, api_key=key, sp=sp)
 
 
 def ask(pr: str):
-    active_cell_index, cells_raw = get_cells()
+    _, cells_raw, active_cell_id = get_cells()
     cells_content = json.dumps(cells_raw)
     chat.hist = [f"active notebook content: {cells_content}"]
     resp = chat(pr)
@@ -49,4 +49,4 @@ def ask(pr: str):
     model_name = chat.model.split("/")[-1]
     header = f"##### 🤖 LLM Response ({model_name} | in: {resp.usage.prompt_tokens} | out: {resp.usage.completion_tokens})\n\n> "
     quoted = resp.choices[0].message.content.replace("\n", "\n> ")
-    insert_cell(header + quoted)
+    insert_cell(header + quoted, active_cell_id)
