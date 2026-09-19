@@ -27,7 +27,9 @@ async function updateCellMetadata(
 	const precedingCellsHash = createHash('sha256').update(JSON.stringify(precedingCells)).digest("hex");
 	const activeCell = nb.cellAt(activeCellIndex);
 	const existingId = activeCell.metadata.uuid;
+	console.log("existingId: ", existingId);
 	const newMetadata = { ...activeCell.metadata, precedingCellsHash, uuid: existingId ?? crypto.randomUUID() };
+	console.log({ newMetadata });
 
 	const edit = new vscode.WorkspaceEdit();
 	edit.set(nb.uri, [vscode.NotebookEdit.updateCellMetadata(activeCellIndex, newMetadata)]);
@@ -42,6 +44,7 @@ async function getCellsContent() {
 	};
 	const nb = editor.notebook;
 	const activeCellIndex = editor?.selection.start ?? 0;
+	console.log("activeCellIndex: ", activeCellIndex);
 	const precedingCells = nb.getCells()
 		.slice(0, activeCellIndex)
 		.map((cell, index): CellContent => ({
@@ -62,6 +65,8 @@ async function insertResponse(content: any, targetCellId: string) {
 	}
 	const nb = editor.notebook;
 	const targetCellIndex = nb.getCells().findIndex(c => c.metadata.uuid === targetCellId);
+	console.log("targetCellId: ", targetCellId);
+	console.log("targetCellIndex: ", targetCellIndex);
 
 	const kind = vscode.NotebookCellKind.Markup;
 	const edit = new vscode.WorkspaceEdit();
@@ -92,8 +97,9 @@ function startServer(port: number) {
 		app.use(express.json());
 
 		app.post("/insert_response", async (req: Request, res: Response) => {
-			const { content, targetCellHash } = req.body;
-			const status = await insertResponse(content, targetCellHash);
+			const { content, targetCellId } = req.body;
+			console.log("content: ", content, "targetCellId:", targetCellId);
+			const status = await insertResponse(content, targetCellId);
 			res.status(status).send();
 		});
 
@@ -159,8 +165,7 @@ export function activate(context: vscode.ExtensionContext) {
 			stopServer();
 		})
 	);
-
-	vscode.workspace.onDidChangeNotebookDocument(e => {
+	vscode.workspace.onDidChangeNotebookDocument(async e => {
 		const editor = vscode.window.activeNotebookEditor;
 		if (!editor) {
 			return;
@@ -171,11 +176,10 @@ export function activate(context: vscode.ExtensionContext) {
 			for (const removedCell of change.removedCells) {
 				maybeStoreLinkedCell(removedCell, nb);
 			}
-
 			for (const addedCell of change.addedCells) {
-				maybeMoveLinkedCell(addedCell, nb, edit);
+				await maybeMoveLinkedCell(addedCell, nb, edit);
 			}
-		}
+		};
 	});
 
 }
@@ -184,7 +188,7 @@ async function maybeMoveLinkedCell(addedCell: vscode.NotebookCell, nb: vscode.No
 	const pendingMove = pendingMoves.find(m => m.movedCellId === addedCell.metadata.uuid);
 	if (pendingMove) {
 		const linkedCellIdx = nb.getCells().findIndex(c => c.metadata.uuid === pendingMove.linkedCellId);
-		const insertIdx = pendingMove.type === "request" ? addedCell.index + 1 : addedCell.index - 1;
+		const insertIdx = pendingMove.type === "request" ? addedCell.index + 1 : addedCell.index;
 		edit.set(nb.uri, [
 			vscode.NotebookEdit.deleteCells(new vscode.NotebookRange(linkedCellIdx, linkedCellIdx + 1)),
 			vscode.NotebookEdit.insertCells(insertIdx, [pendingMove.linkedCellData])
