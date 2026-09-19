@@ -36,7 +36,7 @@ Your output is automatically marked by this header: "### 🤖 LLM Response (…)
 I'm eager to learn about sofware development and coding, so if you see a way to improve or optimize code or an oportunity to learn an interesting concept, i'm happy to hear about it. Keep that short too though.
 """
 
-chat = Chat(model=model, api_base=endpoint, api_key=key, sp=sp)
+chat = Chat(model=model, api_base=endpoint, api_key=key, sp=sp, search="l")
 
 
 def ask(pr: str):

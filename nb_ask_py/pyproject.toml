@@ -9,8 +9,10 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "ddgs>=9.16.0",
     "dialoghelper>=0.2.40",
     "httpx>=0.28.1",
     "ipykernel>=7.3.0",
     "lisette>=0.1.35",
+    "trafilatura>=2.2.0",
 ]
