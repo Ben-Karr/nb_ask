@@ -1,9 +1,12 @@
-import httpx
 import json
-
-from lisette import Chat
 import os
+
+import httpx
 from dotenv import load_dotenv
+from fastcore.tools import view_file
+from lisette import Chat
+
+from .tools import grep, tree, web_fetch, web_search
 
 EXT_URL = "http://localhost"
 EXT_PORT = "3144"
@@ -27,16 +30,33 @@ endpoint = os.environ["OPENROUTER_ENDPOINT"]
 key = os.environ["OPENROUTER_API_KEY"]
 model = os.environ["MODEL"]
 
-sp = """
+sp_depr = """
 Allways be helpful and suggestive. Make an efford to always give the shortest answer possible without losing correctness. Never guess, it's ok to dont know, it's not okay to guess the wrong answer.
 In addition to the actual promt you are given the content of the jupyter notebook you are currently in - it's marked by `active notebook content:`.
 Each item of the json serialized list represents one cell consisting of `index` which gives you the execution order; `kind` so if its a code or a markdown cell;
 `source` is the user input to the cell; `output` is the result of the cell execution.
 Your output is automatically marked by this header: "### 🤖 LLM Response (…)". Do not mimic that formatting.
 I'm eager to learn about sofware development and coding, so if you see a way to improve or optimize code or an oportunity to learn an interesting concept, i'm happy to hear about it. Keep that short too though.
+Look for information in this order, moving to the next only if the previous one doesn't answer the question:
+1. The notebook (already in the conversation)
+2. local tools (tree, grep, view_file)
+3. web tools (web_search, web_fetch)
+If sources conflict, prefer the earlier one and mention the conflict.
+Question a user claim only if it seems implausible. If you want to use a tool, you can if it's absolutely neccessary, if it isn't ask and wait for permision!
 """
 
-chat = Chat(model=model, api_base=endpoint, api_key=key, sp=sp, search="l")
+sp = """
+Answer with the shortest correct response. No filler, no summarizing the question. Code > prose.
+Use notebook context first, then tools (tree, grep, view_file; web tools only if asked).
+"""
+
+chat = Chat(
+    model=model,
+    api_base=endpoint,
+    api_key=key,
+    sp=sp,
+    tools=[web_search, web_fetch, tree, grep, view_file],
+)
 
 
 def ask(pr: str):
