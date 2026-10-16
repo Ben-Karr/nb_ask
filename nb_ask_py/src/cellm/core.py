@@ -4,6 +4,7 @@ import os
 import httpx
 from dotenv import load_dotenv
 from fastcore.tools import view_file
+from IPython.display import Markdown, display
 from lisette import Chat
 
 from .tools import grep, tree, web_fetch, web_search
@@ -15,20 +16,19 @@ EXT_PORT = "3144"
 def get_cells():
     ret = httpx.get(f"{EXT_URL}:{EXT_PORT}")
     data = ret.json()
-    return data["precedingCellsHash"], data["precedingCells"], data["activeCellId"]
+    return data["precedingCellsHash"], data["precedingCells"]
 
 
-def insert_cell(content, target_cell_id):
-    return httpx.post(
-        f"{EXT_URL}:{EXT_PORT}/insert_response",
-        json={"content": content, "targetCellId": target_cell_id},
-    )
+def get_ext_config():
+    """Fetch token/model from the VS Code extension; fall back to .env."""
+    ret = httpx.get(f"{EXT_URL}:{EXT_PORT}/config", timeout=2)
+    ret.raise_for_status()
+    cfg = ret.json()
+    return cfg.get("token"), cfg.get("endpoint"), cfg.get("model")
 
 
-load_dotenv()
-endpoint = os.environ["OPENROUTER_ENDPOINT"]
-key = os.environ["OPENROUTER_API_KEY"]
-model = os.environ["MODEL"]
+key, endpoint, model = get_ext_config()
+
 
 sp_depr = """
 Allways be helpful and suggestive. Make an efford to always give the shortest answer possible without losing correctness. Never guess, it's ok to dont know, it's not okay to guess the wrong answer.
@@ -60,7 +60,7 @@ chat = Chat(
 
 
 def ask(pr: str):
-    _, cells_raw, active_cell_id = get_cells()
+    _, cells_raw = get_cells()
     cells_content = json.dumps(cells_raw)
     chat.hist = [f"active notebook content: {cells_content}"]
     resp = chat(pr)
@@ -69,4 +69,4 @@ def ask(pr: str):
     model_name = chat.model.split("/")[-1]
     header = f"##### 🤖 LLM Response ({model_name} | in: {resp.usage.prompt_tokens} | out: {resp.usage.completion_tokens})\n\n> "
     quoted = resp.choices[0].message.content.replace("\n", "\n> ")
-    insert_cell(header + quoted, active_cell_id)
+    return display(Markdown(header + quoted))
