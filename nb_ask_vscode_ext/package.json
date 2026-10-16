@@ -2,14 +2,16 @@
     "name": "nbAsk",
     "displayName": "Notebook Ask",
     "description": "",
-    "version": "0.1.0",
+    "version": "0.1.9",
     "engines": {
         "vscode": "^1.125.0"
     },
     "categories": [
         "Other"
     ],
-    "activationEvents": [],
+    "activationEvents": [
+        "onNotebook:ipynb"
+    ],
     "main": "./out/extension.js",
     "contributes": {
         "commands": [
@@ -24,6 +26,10 @@
             {
                 "command": "nb_ask.set_port",
                 "title": "NbAsk: Set server port (default: 3000)"
+            },
+            {
+                "command": "nb_ask.edit_output",
+                "title": "NbAsk: Edit response output"
             }
         ]
     },
@@ -48,5 +54,15 @@
     "overrides": {
         "diff": "^8.0.4",
         "serialize-javascript": "^7.0.6"
-    }
+    },
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/you/nb_ask"
+    },
+    "license": "SEE LICENSE IN ../LICENSE",
+    "publisher": "your-publisher-id",
+    "keywords": [
+        "notebook",
+        "llm"
+    ]
 }
