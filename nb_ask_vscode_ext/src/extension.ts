@@ -1,13 +1,13 @@
 import * as vscode from 'vscode';
-import express, { NextFunction, type Express, type Request, type Response } from 'express';
+import express, { type Express, type Request, type Response } from 'express';
 import { Server } from 'http';
 import { createHash } from 'crypto';
 import { editOutputCommand } from './editOutput';
+import { NbAskSettingsViewProvider, DEFAULT_PORT, TOKEN_SECRET_KEY } from './settingsView';
 
 
 let server: Server | undefined;
-let _default_port: number = 3144;
-let port: number = _default_port;
+let port: number;
 
 
 interface CellContent {
@@ -58,7 +58,7 @@ async function getCellsContent() {
 	return { precedingCellsHash, precedingCells, activeCellId };
 }
 
-function startServer(port: number) {
+function startServer(port: number, context: vscode.ExtensionContext) {
 	if (server !== undefined) { return; }
 	const app: Express = express();
 
@@ -66,6 +66,17 @@ function startServer(port: number) {
 		res.json(await getCellsContent());
 	});
 	app.use(express.json());
+
+	app.get("/config", async (req: Request, res: Response) => {
+		const token = await context.secrets.get(TOKEN_SECRET_KEY);
+		const cfg = vscode.workspace.getConfiguration('nbAsk');
+		res.json({
+			model: cfg.get<string>('model', ''),
+			endpoint: 'https://openrouter.ai/api/v1',
+			token: token ?? null,
+			port,
+		});
+	});
 
 	const s = app.listen(port, "127.0.0.1", () => {
 		console.log(`NBAsk server on port ${port}`);
@@ -77,54 +88,32 @@ function startServer(port: number) {
 	});
 }
 
-
-function stopServer() {
-	if (server === undefined) {
-		console.log("No NBAsk server running...");
-	}
-	else {
-		console.log("Closing NBAsk server...");
-		server.close();
+function stopServer(): Promise<void> {
+	return new Promise(resolve => {
+		if (server === undefined) { resolve(); return; }
+		server.close(() => resolve());   // callback fires once port is released
 		server = undefined;
-	};
+	});
 }
 
-function maybeRestartServer(port: number) {
+async function restartServer(port: number, context: vscode.ExtensionContext) {
 	if (server !== undefined) {
-		console.log(`Restart NBAsk server with new port: ${port}`);
-		stopServer();
-		startServer(port);
-	};
+		console.log(`Restart NBAsk server on port ${port}`);
+		await stopServer();
+	}
+	startServer(port, context);
 }
+
 
 export function activate(context: vscode.ExtensionContext) {
-	startServer(port);
-	// Keep that as comment, maybe want to add this back in later...
-	/*context.subscriptions.push(
-		vscode.commands.registerCommand('nb_ask.set_token', async () => {
-			const token = await vscode.window.showInputBox({ prompt: 'Enter token', password: true });
-			if (token) {
-				await context.secrets.store('nb_ask.token', token);
-			};
-		})
-	);
-	*/
 	console.log("Activating nb_ask extension...");
-	context.subscriptions.push(
-		vscode.commands.registerCommand('nb_ask.set_port', async () => {
-			let _port = (await vscode.window.showInputBox({ prompt: 'Enter port:' })) ?? '3001';
-			let parsedPort = parseInt(_port, 10);
-			if (isNaN(parsedPort)) {
-				vscode.window.showErrorMessage(`Invalid port number: ${_port}`, { modal: true });
-				return;
-			}
-			port = parsedPort;
-			maybeRestartServer(port);
-		})
-	);
+
+	port = vscode.workspace.getConfiguration('nbAsk').get<number>('port', DEFAULT_PORT);
+	startServer(port, context);
+
 	context.subscriptions.push(
 		vscode.commands.registerCommand('nb_ask.start', async () => {
-			startServer(port);
+			startServer(port, context);
 		})
 	);
 	context.subscriptions.push(
@@ -133,6 +122,16 @@ export function activate(context: vscode.ExtensionContext) {
 		})
 	);
 	context.subscriptions.push(editOutputCommand(context));
+
+	const provider = new NbAskSettingsViewProvider(context, async (p: number) => { await restartServer(p, context); });
+	context.subscriptions.push(
+		vscode.window.registerWebviewViewProvider(NbAskSettingsViewProvider.viewId, provider)
+	);
+	context.subscriptions.push(
+		vscode.commands.registerCommand('nb_ask.open_settings', () => {
+			vscode.commands.executeCommand('nbAsk.settingsView.focus');
+		})
+	);
 }
 
 export function deactivate() {

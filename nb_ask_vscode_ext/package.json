@@ -2,7 +2,7 @@
     "name": "nbAsk",
     "displayName": "Notebook Ask",
     "description": "",
-    "version": "0.1.9",
+    "version": "0.1.14",
     "engines": {
         "vscode": "^1.125.0"
     },
@@ -24,14 +24,46 @@
                 "title": "NbAsk: Stop Server"
             },
             {
-                "command": "nb_ask.set_port",
-                "title": "NbAsk: Set server port (default: 3000)"
-            },
-            {
                 "command": "nb_ask.edit_output",
                 "title": "NbAsk: Edit response output"
+            },
+            {
+                "command": "nb_ask.open_settings",
+                "title": "NbAsk: Open Settings"
             }
-        ]
+        ],
+        "viewsContainers": {
+            "activitybar": [
+                {
+                    "id": "nbAsk",
+                    "title": "NbAsk",
+                    "icon": "media/nbask.svg"
+                }
+            ]
+        },
+        "views": {
+            "nbAsk": [
+                {
+                    "type": "webview",
+                    "id": "nbAsk.settingsView",
+                    "name": "Settings",
+                    "icon": "media/nbask.svg"
+                }
+            ]
+        },
+        "configuration": {
+            "title": "NbAsk",
+            "properties": {
+                "nbAsk.port": {
+                    "type": "number",
+                    "default": 3144
+                },
+                "nbAsk.model": {
+                    "type": "string",
+                    "default": ""
+                }
+            }
+        }
     },
     "scripts": {
         "vscode:prepublish": "npm run compile",
