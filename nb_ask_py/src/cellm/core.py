@@ -1,11 +1,9 @@
 import json
-import os
 
 import httpx
-from dotenv import load_dotenv
 from fastcore.tools import view_file
+from fastllm.chat import AsyncChat
 from IPython.display import Markdown, display
-from lisette import Chat
 
 from .tools import grep, tree, web_fetch, web_search
 
@@ -50,12 +48,12 @@ Answer with the shortest correct response. No filler, no summarizing the questio
 Use notebook context first, then tools (tree, grep, view_file; web tools only if asked).
 """
 
-chat = Chat(
+chat = AsyncChat(
     model=model,
-    api_base=endpoint,
-    api_key=key,
     sp=sp,
     tools=[web_search, web_fetch, tree, grep, view_file],
+    api_key=key,
+    base_url=endpoint,
 )
 
 
