@@ -1,11 +1,14 @@
+import json
 import re
 from pathlib import Path
 
 import httpx
 import trafilatura
 from ddgs import DDGS
+from fastcore.tools import view_file as _view_file
 
 from .helpers import PROJECT_ROOT, file_iterator, safe_path, walk
+from .utils import EXT_PORT, EXT_URL
 
 MAX_DEPTH = 3
 MAX_GREP_PER_FILE = 3
@@ -102,27 +105,47 @@ def grep(
     return "\n".join(hits) or NOT_FOUND
 
 
-def view(
-    path: str,  # File to read, relative to the project
-    start_line: int = 1,  # First line to show (1-based)
-    end_line: int
-    | None = None,  # Last line to show; default: up to 300 lines from start_line
-) -> str:
-    "Read a file or line range with line numbers. Use after grep to read around a hit."
-    p = safe_path(path)
-    if p is None or not p.is_file() or not keep(p, None, set()):
-        return NOT_FOUND
-    if p.stat().st_size > 1_000_000:
-        return "error: file too large, use grep to locate the part you need"
-    try:
-        lines = p.read_text(encoding="utf-8").splitlines()
-    except (UnicodeDecodeError, OSError):
-        return NOT_FOUND
-    n = len(lines)
-    if not 1 <= start_line <= n:
-        return f"error: start_line must be 1-{n}"
-    end = min(end_line or n, n, start_line + MAX_VIEW_LINES - 1)
-    out = [f"{i}: {l}" for i, l in enumerate(lines[start_line - 1 : end], start_line)]
-    if end < n and (end_line is None or end < end_line):
-        out.append(f"… {n - end} more lines, call again with start_line={end + 1}")
-    return "\n".join(out)
+# def view(
+#    path: str,  # File to read, relative to the project
+#    start_line: int = 1,  # First line to show (1-based)
+#    end_line: int
+#    | None = None,  # Last line to show; default: up to 300 lines from start_line
+# ) -> str:
+#    "Read a file or line range with line numbers. Use after grep to read around a hit."
+#    p = safe_path(path)
+#    if p is None or not p.is_file() or not keep(p, None, set()):
+#        return NOT_FOUND
+#    if p.stat().st_size > 1_000_000:
+#        return "error: file too large, use grep to locate the part you need"
+#    try:
+#        lines = p.read_text(encoding="utf-8").splitlines()
+#    except (UnicodeDecodeError, OSError):
+#        return NOT_FOUND
+#    n = len(lines)
+#    if not 1 <= start_line <= n:
+#        return f"error: start_line must be 1-{n}"
+#    end = min(end_line or n, n, start_line + MAX_VIEW_LINES - 1)
+#    out = [f"{i}: {l}" for i, l in enumerate(lines[start_line - 1 : end], start_line)]
+#    if end < n and (end_line is None or end < end_line):
+#        out.append(f"… {n - end} more lines, call again with start_line={end + 1}")
+#    return "\n".join(out)
+#
+
+
+def view_file(
+    path: str,  # Path to view (expands `~` if needed)
+    start_line: int = 1,  # Starting line to view
+    end_line: int = None,  # End line (defaults to last line if None; may be past EOF, which clamps to the last line - handy when the file size is unknown)
+    lnhashs: bool = False,  # Prefix `lineno|hash|` exhash addresses instead of `lineno: `
+):
+    "Read file contents, optionally limited to 1-based line range. Dont use for currently active .ipynb use view_nb_overview for that"
+    return _view_file(path, start_line, end_line, lnhashs)
+
+
+def view_nb_overview() -> str:
+    # "This most likely is your first step in gaining context. The user works in .ipynbs and will most likely provide information there, that are relevant for answering questions. Fetch the live content of the user's active Jupyter notebook: JSON list of cells, each with index, kind, source and output. Always reflects the current state - call this whenever the question could relate to the notebook, rather than assuming its content."
+    "Fetch the live content of the user's active Jupyter notebook: JSON list of cells, each with index, kind, source and output. Always reflects the current state - call this whenever the question could relate to the notebook, rather than assuming its content."
+    ret = httpx.get(f"{EXT_URL}:{EXT_PORT}")
+    data = ret.json()
+    ## unused data["precedingCellsHash"] | might remove ToDo
+    return json.dumps(data["precedingCells"])

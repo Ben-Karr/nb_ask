@@ -1,70 +1,51 @@
-import json
+import re
 
-import httpx
 from fastcore.tools import view_file
-from fastllm.chat import AsyncChat
+from fastllm.chat import AsyncChat, AsyncStreamFormatter
 from IPython.display import Markdown, display
 
-from .tools import grep, tree, web_fetch, web_search
+from .tools import grep, tree, view_nb_overview, web_fetch, web_search
+from .utils import get_ext_config, register_model
 
-EXT_URL = "http://localhost"
-EXT_PORT = "3144"
-
-
-def get_cells():
-    ret = httpx.get(f"{EXT_URL}:{EXT_PORT}")
-    data = ret.json()
-    return data["precedingCellsHash"], data["precedingCells"]
-
-
-def get_ext_config():
-    """Fetch token/model from the VS Code extension; fall back to .env."""
-    ret = httpx.get(f"{EXT_URL}:{EXT_PORT}/config", timeout=2)
-    ret.raise_for_status()
-    cfg = ret.json()
-    return cfg.get("token"), cfg.get("endpoint"), cfg.get("model")
-
-
-key, endpoint, model = get_ext_config()
-
-
-sp_depr = """
-Allways be helpful and suggestive. Make an efford to always give the shortest answer possible without losing correctness. Never guess, it's ok to dont know, it's not okay to guess the wrong answer.
-In addition to the actual promt you are given the content of the jupyter notebook you are currently in - it's marked by `active notebook content:`.
-Each item of the json serialized list represents one cell consisting of `index` which gives you the execution order; `kind` so if its a code or a markdown cell;
-`source` is the user input to the cell; `output` is the result of the cell execution.
-Your output is automatically marked by this header: "### 🤖 LLM Response (…)". Do not mimic that formatting.
-I'm eager to learn about sofware development and coding, so if you see a way to improve or optimize code or an oportunity to learn an interesting concept, i'm happy to hear about it. Keep that short too though.
-Look for information in this order, moving to the next only if the previous one doesn't answer the question:
-1. The notebook (already in the conversation)
-2. local tools (tree, grep, view_file)
-3. web tools (web_search, web_fetch)
-If sources conflict, prefer the earlier one and mention the conflict.
-Question a user claim only if it seems implausible. If you want to use a tool, you can if it's absolutely neccessary, if it isn't ask and wait for permision!
-"""
+key, endpoint, full_model = get_ext_config()
+model = full_model.removeprefix("openrouter/")  ## Hacked; ToDo solve in ext
 
 sp = """
-Answer with the shortest correct response. No filler, no summarizing the question. Code > prose.
-Use notebook context first, then tools (tree, grep, view_file; web tools only if asked).
+You are assisting inside a live Jupyter notebook (the cell where the user runs ask()).
+The user's ACTIVE notebook is not on disk — its saved .ipynb is a stale snapshot, while its
+in-memory state changes constantly. Live content of the active notebook is available ONLY via
+view_nb_overview; use them first for any question about it (cells, code, outputs).
+Reading saved .ipynb files of other notebooks with view_file is fine.
+If the request reads like a continuation, the previous exchange is already in the conversation.
+Answer with the shortest correct response. No filler. Code > prose.
+Other tools: tree, grep, view_file for the project; web tools only if asked.
 """
+
+
+register_model(model, "openrouter")
 
 chat = AsyncChat(
     model=model,
     sp=sp,
-    tools=[web_search, web_fetch, tree, grep, view_file],
+    tools=[web_search, web_fetch, tree, grep, view_file, view_nb_overview],
+    vendor_name="openrouter",
     api_key=key,
     base_url=endpoint,
 )
 
 
-def ask(pr: str):
-    _, cells_raw = get_cells()
-    cells_content = json.dumps(cells_raw)
-    chat.hist = [f"active notebook content: {cells_content}"]
-    resp = chat(pr)
-    chat.last_response = resp
+async def ask(pr: str):
+    # _, cells_raw = get_cells()
+    # chat.hist = [f"active notebook content: {json.dumps(cells_raw)}"]
+    chat.hist = []
+    fmt = AsyncStreamFormatter(showthink=True)
+    md, h = "", display(Markdown(""), display_id=True)
 
-    model_name = chat.model.split("/")[-1]
-    header = f"##### 🤖 LLM Response ({model_name} | in: {resp.usage.prompt_tokens} | out: {resp.usage.completion_tokens})\n\n> "
-    quoted = resp.choices[0].message.content.replace("\n", "\n> ")
-    return display(Markdown(header + quoted))
+    async for piece in fmt.format_stream(await chat(pr, stream=True, max_steps=6)):
+        md += piece
+        h.update(Markdown(md))
+
+    h.update(Markdown(f"##### 🤖 LLM Response ({chat.use})\n\n"))
+
+    display_md = re.sub(r"\s*- ⏳ <code>.*?</code> ⏳\s*", "", md)
+    return Markdown("".join(display_md))
